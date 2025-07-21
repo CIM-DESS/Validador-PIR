@@ -1,0 +1,33 @@
+# Dependencias principales del proyecto Validador-PIR
+# Framework web
+Django>=5.2.1
+
+# Manipulación de archivos Excel
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# Utilidades para formularios Django
+django-widget-tweaks>=1.5.0
+
+# Dependencias adicionales que pueden ser necesarias
+# Para manejo de fechas y tiempo
+python-dateutil>=2.8.0
+
+# Para procesamiento de números
+numpy>=1.24.0
+
+# Para variables de entorno (recomendado para producción)
+python-decouple>=3.8
+
+# Para mejor manejo de archivos estáticos en producción
+whitenoise==6.6.0
+
+# Para mejorar la seguridad en producción
+django-environ==0.11.2
+
+# Base de datos PostgreSQL (opcional, para producción)
+# psycopg2-binary==2.9.7
+
+# Servidor WSGI para producción
+gunicorn==21.2.0
+
