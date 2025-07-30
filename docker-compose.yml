@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    environment:
+      - DEBUG=1
+      - DJANGO_SETTINGS_MODULE=appcens.settings
+    command: python manage.py runserver 0.0.0.0:8000
+    
