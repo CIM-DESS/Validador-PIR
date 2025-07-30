@@ -6,6 +6,7 @@ from django.core.files.uploadedfile import UploadedFile
 from typing import List, Dict
 from dataclasses import dataclass
 from datetime import datetime
+import threading
 
 @dataclass
 class Novedad:
@@ -14,31 +15,108 @@ class Novedad:
     fila: int
     descripcion: str
 
+# 🚀 SISTEMA DE CACHE OPTIMIZADO GLOBAL
+_cache_pivote = {}
+_cache_lock = threading.Lock()
+_cache_inicializado = False
+
+def inicializar_cache_pivote():
+    """Inicializa el cache del archivo pivote una sola vez"""
+    global _cache_inicializado
+    
+    if _cache_inicializado:
+        return
+        
+    with _cache_lock:
+        if _cache_inicializado:  # Double-check locking
+            return
+            
+        print("🔄 Inicializando cache del archivo pivote...")
+        try:
+            # Configuraciones de cache necesarias
+            configuraciones = [
+                ("trafos_excluidos", 0),
+                ("uc", 3),
+                ("lineas", 0),
+                ("municipio", 1),
+                ("regionales", 1),
+                ("municipio", 2),
+                ("subestaciones", 2),
+                ("equipo_proteccion", "completo")  # Caso especial
+            ]
+            
+            for hoja, columna in configuraciones:
+                if columna == "completo":
+                    # Caso especial para equipo_proteccion
+                    cargar_equipo_proteccion_cache()
+                else:
+                    cargar_datos_pivote_optimizado(hoja, columna)
+            
+            _cache_inicializado = True
+            print("✅ Cache del archivo pivote inicializado correctamente")
+            
+        except Exception as e:
+            print(f"❌ Error inicializando cache: {e}")
+
+def cargar_datos_pivote_optimizado(hoja: str, columna: int = 0) -> set:
+    """Carga con cache para evitar lecturas repetidas del archivo pivote"""
+    cache_key = f"{hoja}_{columna}"
+    
+    if cache_key not in _cache_pivote:
+        try:
+            df = pd.read_excel(RUTA_PIVOTE, sheet_name=hoja, dtype=str)
+            valores = df.iloc[:, columna].dropna().astype(str).str.strip().str.upper()
+            _cache_pivote[cache_key] = set(valores)
+            print(f"� Cache cargado: {hoja}[{columna}] -> {len(_cache_pivote[cache_key])} valores")
+        except Exception as e:
+            print(f"⚠️ Error cargando pivote: hoja={hoja}, columna={columna}, error={e}")
+            _cache_pivote[cache_key] = set()
+    
+    return _cache_pivote[cache_key]
+
+def cargar_equipo_proteccion_cache():
+    """Carga el diccionario de equipos de protección en cache"""
+    cache_key = "equipo_proteccion_dict"
+    
+    if cache_key not in _cache_pivote:
+        try:
+            df_equipo_proteccion = pd.read_excel(RUTA_PIVOTE, sheet_name="equipo_proteccion", dtype=str)
+            
+            dicc_equipo_proteccion = {}
+            for _, fila in df_equipo_proteccion.iterrows():
+                fid = str(fila.iloc[1]).strip().upper()  # FID en columna 2 (índice 1)
+                if fid != "" and fid != "NAN":
+                    dicc_equipo_proteccion[fid] = {
+                        "codigo_uc": str(fila.iloc[6]).strip().upper(),  # Columna 7
+                        "anio_operacion": str(fila.iloc[8]).strip()       # Columna 9
+                    }
+            
+            _cache_pivote[cache_key] = dicc_equipo_proteccion
+            print(f"📋 Cache equipos protección: {len(dicc_equipo_proteccion)} elementos")
+            
+        except Exception as e:
+            print(f"⚠️ Error cargando equipos protección: {e}")
+            _cache_pivote[cache_key] = {}
+
 def procesar_archivos_excel(archivos: List[UploadedFile]) -> List[Dict[str, str]]:
+    # 🚀 Inicializar cache si no está listo
+    inicializar_cache_pivote()
+    
     novedades = []
     codigos_vistos = {}
     trafos_expansion = {}
 
-    trafos_excluidos = cargar_datos_pivote("trafos_excluidos", 0)   # ✅ Cargar transformadores excluidos desde el archivo pivote (hoja, columna)
-    uc_validas = cargar_datos_pivote("uc", 3)   # ✅ lee la columna "Código UC" de la hoja 'uc' (hoja, columna)
-    lineas_validas = cargar_datos_pivote("lineas", 0)  # 🟩 Columna 0 = 'Código línea'
-    municipios_validos = cargar_datos_pivote("municipio", 1)  # Columna 1 = segunda columna
-    regionales_validos = cargar_datos_pivote("regionales", 1)  # 🟡 Columna 'Cod Dane'
-    cod_dane_validos = cargar_datos_pivote("municipio", 2)  # 🟡 Columna 'CODIGO'
-    ius_validos = cargar_datos_pivote("subestaciones", 2)  # 🟡 Columna 'IUS'
-
-    # # ✅ Diccionario desde 'equipo_proteccion' (usamos varias columnas)
-    df_equipo_proteccion = pd.read_excel(RUTA_PIVOTE, sheet_name="equipo_proteccion", dtype=str)
-
-    # Creamos un diccionario por FID con las columnas necesarias
-    dicc_equipo_proteccion = {}
-    for _, fila in df_equipo_proteccion.iterrows():
-        fid = str(fila.iloc[1]).strip().upper()  # FID en columna 2 (índice 1)
-        if fid != "" and fid != "NAN":
-            dicc_equipo_proteccion[fid] = {
-                "codigo_uc": str(fila.iloc[6]).strip().upper(),  # Columna 7
-                "anio_operacion": str(fila.iloc[8]).strip()       # Columna 9
-            }
+    # 🚀 Usar datos desde cache optimizado
+    trafos_excluidos = cargar_datos_pivote_optimizado("trafos_excluidos", 0)
+    uc_validas = cargar_datos_pivote_optimizado("uc", 3)
+    lineas_validas = cargar_datos_pivote_optimizado("lineas", 0)
+    municipios_validos = cargar_datos_pivote_optimizado("municipio", 1)
+    regionales_validos = cargar_datos_pivote_optimizado("regionales", 1)
+    cod_dane_validos = cargar_datos_pivote_optimizado("municipio", 2)
+    ius_validos = cargar_datos_pivote_optimizado("subestaciones", 2)
+    
+    # 🚀 Obtener diccionario desde cache
+    dicc_equipo_proteccion = _cache_pivote.get("equipo_proteccion_dict", {})
 
 
     for archivo in archivos:
@@ -1006,7 +1084,15 @@ def procesar_archivos_excel(archivos: List[UploadedFile]) -> List[Dict[str, str]
 
 
 # 📂 Ruta del archivo pivote local o en red
-RUTA_PIVOTE = "D:/OneDrive - Grupo EPM/Descargas/Pivote.xlsx"  # ajustar si el archivo pivote esta en otra carpeta
+RUTA_PIVOTE = "./static/pivote.xlsx"  # ajustar si el archivo pivote esta en otra carpeta
+
+# Verificar si el archivo existe
+if not os.path.exists(RUTA_PIVOTE):
+    print(f"⚠️ ADVERTENCIA: No se encontró el archivo pivote en la ruta: {RUTA_PIVOTE}")
+    print(f"📁 Directorio actual: {os.getcwd()}")
+    print(f"📋 Archivos en './static/': {os.listdir('./static/') if os.path.exists('./static/') else 'Directorio no existe'}")
+else:
+    print(f"✅ Archivo pivote encontrado en: {RUTA_PIVOTE}")
 
 
 def cargar_datos_pivote(hoja: str, columna: int = 0) -> set:
